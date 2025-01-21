@@ -1,0 +1,80 @@
+* Packet transfer protocol specification
+
+** Description
+Packet transfer is a simple protocol for transfering data packages
+over the lower layer that supports only byte stream. Its main purpose
+is to enable lightweight point-to-point packets transfer.
+
+Packet transfer protocol consists of 2 different protocols that can be
+mixed together. The first one is called pico transfer and supports
+transfering payloads up to 64bytes. It supports basic error
+detection. Second is extended packet transfer protocol, which can
+transfer longer payloads (up to 4Gb). It supports basic error checking
+and retransmissions.
+
+** Basic arhitecture
+
+There is common 1byte header in every packet. It selects the package
+type (pico/extended). After the header is parsed, the input stream is
+forwarded to pico or extended packet receiver until the end of the packet.
+
+*** common header
+| fild name   | bits | description                  |
+|-------------+------+------------------------------|
+| packet type | 7,6  | Defines the packet protocol: |
+|             |      | 0: reserved                  |
+|             |      | 1: reserved                  |
+|             |      | 2: pico packet               |
+|             |      | 3: extended packet           |
+|-------------+------+------------------------------|
+
+The rest of the bits are specific to the packet type
+
+**** pico 
+
+| fild name    | bits         | description                                           |
+|--------------+--------------+-------------------------------------------------------|
+| payload_size | 5,4,3,2,1,0, | Defines the package's payload size: 1-64              |
+|              |              | The actual payload size is  payload_size + 1,         |
+|              |              | because sending packet with no payload makes no sense |
+|--------------+--------------+-------------------------------------------------------|
+
+**** extended
+
+| fild name | bits  | description             |
+|-----------+-------+-------------------------|
+| msg type  | 5,4,3 | 0: start                |
+|           |       | 1: payload              |
+|           |       | 2: last                 |
+|           |       | 3: response             |
+|-----------+-------+-------------------------|
+| flags     | 2,1,0 | If message is response: |
+|           |       | 0: ack                  |
+|           |       | 1: nack                 |
+|           |       | 2-7: reserved           |
+|-----------+-------+-------------------------|
+
+*** pico payload
+
+After the header the pico packet has data payload of the length
+specified in header payload_size field. at the end of the payload,
+there is 1 byte of checksum. The checksum is bsd 1byte checksum.
+
+
+*** extended payload
+
+TODO:....
+
+
+*** pico transfer protocol
+
+Pico transfers are stateless, so sender sends the pico packet and
+forgets about it. There is no feedback from the receiver if the packet
+was received.
+
+
+*** extended transfer protocol
+
+
+
+
