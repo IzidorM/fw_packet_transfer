@@ -46,6 +46,7 @@ struct pt_settings {
 struct pt;
 
 struct pt *pt_init(struct pt_settings *s);
+
 void pt_receiver_run(struct pt *p, uint32_t time_from_last_call_ms);
 
 int32_t pt_pico_send(struct pt *p, uint8_t *data, size_t data_size);

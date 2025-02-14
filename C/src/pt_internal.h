@@ -16,6 +16,10 @@
 #include "pt_extended.h"
 #endif
 
+#define PT_HEADER_TYPE_POS 6
+#define PT_HEADER_TYPE_PICO 2
+#define PT_HEADER_TYPE_EXTENDED 3
+
 enum pt_receive_state {
         PT_RX_WAITING_FIRST_BYTE,
         PT_RX_RECEIVING_PICO_PACKET,

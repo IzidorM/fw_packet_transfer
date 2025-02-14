@@ -36,7 +36,7 @@ void pt_debug(const char *format, ...)
         va_end(va);
 }
 #else
-
+#define pt_debug dmsg
 //void pt_debug(const char *format, ...)
 //{
 //
@@ -49,8 +49,6 @@ static void pt_receiver_check_header(struct pt *p, uint8_t header)
 	uint8_t packet_type = (header >> PT_HEADER_TYPE_POS) & 0x3;
 	if (PT_HEADER_TYPE_PICO == packet_type)
 	{
-		pt_debug("Receiving pico packet\n");
-
 		pt_pico_receiver_process_header(p, header);
 		p->pt_receive_state = 
 			PT_RX_RECEIVING_PICO_PACKET;
@@ -85,24 +83,23 @@ void pt_receiver_run(struct pt *p, uint32_t time_from_last_call_ms)
 
         p->time_from_last_rx_packet_ms += time_from_last_call_ms;
 
-        if ((p->timeout_rx_ms) < p->time_from_last_rx_packet_ms)
+        if ((p->timeout_rx_ms) <= p->time_from_last_rx_packet_ms)
         {
-                pt_debug("Timeout, dropping stored data\n");
+                //pt_debug("Timeout, dropping stored data\n");
                 p->pt_receive_state = PT_RX_WAITING_FIRST_BYTE;
 	
                 pico_rx_reset(p);
         }
 	
-        p->time_from_last_rx_packet_ms = 0;
-
         while(!byte_fifo_is_empty(p->rx_fifo))
         {
+		p->time_from_last_rx_packet_ms = 0;
+
                 if (PT_RX_WAITING_FIRST_BYTE == p->pt_receive_state)
                 {
 			uint8_t header = byte_fifo_read(p->rx_fifo);
 			pt_receiver_check_header(p, header);
 		}
-
                 else if (PT_RX_RECEIVING_PICO_PACKET == p->pt_receive_state)
                 {
                         bool pico_processing_done = false;
@@ -144,6 +141,8 @@ void pt_receiver_run(struct pt *p, uint32_t time_from_last_call_ms)
 #endif
 		else if (PT_DROP_DATA_UNTIL_TIMEOUT == p->pt_receive_state)
 		{
+			byte_fifo_reset(p->rx_fifo);
+			//pt_debug("Exit loop\n");
 			return;
 		}
         }

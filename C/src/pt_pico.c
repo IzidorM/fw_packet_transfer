@@ -69,6 +69,16 @@ int32_t pt_pico_send(struct pt *p, uint8_t *data, size_t data_size)
 	cs = bsd_checksum8_from(cs, data, data_size);		
 	byte_fifo_write(p->tx_fifo, cs);
 
+	pt_debug("sending out pico packet of len: %i\n", data_size+2);
+
+	pt_debug("0x%x, ", header);
+	for (uint32_t i = 0; data_size > i; i++)
+	{
+		pt_debug("0x%x, ", data[i]);
+	}
+	pt_debug("0x%x \n", cs);
+
+
 	return PT_NO_ERROR;
 }
 
@@ -83,6 +93,9 @@ void pt_pico_receiver_process_header(struct pt *p, uint8_t header)
 		(header & (PT_PICO_MAX_PAYLOAD_LENGTH-1)) + 1
 		+ PT_PICO_PACKET_HEADER_SIZE
 		+ PT_PICO_PACKET_TAIL_SIZE;
+
+	pt_debug("\n\nReceiving pico packet with payload len: %i\n", 
+		 (header & (PT_PICO_MAX_PAYLOAD_LENGTH-1)) + 1);
 }
 
 int32_t pt_pico_receiver_process_payload(struct pt *p, bool *done)
@@ -95,19 +108,38 @@ int32_t pt_pico_receiver_process_payload(struct pt *p, bool *done)
 
 		prx->buff[prx->buff_data_already_received_cnt] = new_byte;
 		prx->buff_data_already_received_cnt += 1;
-
+//#ifndef UNIT_TESTS
+//		pt_debug("%i\n", prx->buff_data_already_received_cnt);
+//#endif
 		if ((prx->buff_data_already_received_cnt) == prx->buff_expected_data_size)
 		{
+			pt_debug("pt pico msg received: \n");
+
+			for (uint32_t i = 0; (prx->buff_expected_data_size) > i; i++)
+			{
+				pt_debug("0x%x, ", prx->buff[i]);
+			}
+			pt_debug("\n");
+
 			// crc received
 			uint8_t cs = bsd_checksum8(prx->buff, 
 						   prx->buff_expected_data_size-1);
 			if (cs != new_byte)
 			{
-				pt_debug("checksum failed\n");
+				pt_debug("checksum failed, discharging msg\n");
 				return PT_ERROR_CHECKSUM_FAILED;
 			}
 			else
 			{
+
+				pt_debug("forwarding payload to next layer: \n");
+
+				for (uint32_t i = 0; (prx->buff_expected_data_size-2) > i; i++)
+				{
+					pt_debug("0x%x, ", prx->buff[1+i]);
+				}
+				pt_debug("\n");
+
 				if (prx->callback)
 				{
 					prx->callback(prx->rx_callback_handler , 

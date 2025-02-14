@@ -4,10 +4,6 @@
 #define PT_PICO_PACKET_HEADER_SIZE 1
 #define PT_PICO_PACKET_TAIL_SIZE 1
 
-#define PT_HEADER_TYPE_POS 6
-#define PT_HEADER_TYPE_PICO 2
-#define PT_HEADER_TYPE_EXTENDED 3
-
 #define PT_PICO_MAX_PAYLOAD_LENGTH 64
 
 enum pt_pico_rx_state {
@@ -29,6 +25,7 @@ struct pt_pico_receiver_data {
 void pico_rx_reset(struct pt *p);
 void pt_pico_receiver_process_header(struct pt *p, uint8_t header);
 int32_t pt_pico_receiver_process_payload(struct pt *p, bool *done);
+
 void pt_pico_register_rx_callback(
 	struct pt *p,
 	void *high_layer_data, 
