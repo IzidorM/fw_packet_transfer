@@ -125,18 +125,20 @@ pico_config_search_for_request_handler(struct pico_config *pc,
         return NULL;
 }
 
-int32_t pico_config_receive(struct pico_config *pc, 
+void pico_config_receive(struct pico_config *pc, 
 			    uint8_t *data, size_t data_size)
 {
-        if (NULL == pc || NULL == data || 1 > data_size)
-        {
-                return PC_ERROR_ARGS;
-        }
-
-        if (PICO_CONFIG_MAX_DATA < data_size)
-        {
-                return PC_ERROR_PAYLOAD_OUT_OF_BOUNDS;
-        }
+// NOTE: lower layer cant do anything with error messages
+// Errors need to be handled by pico_config itself or upper layers...
+//        if (NULL == pc || NULL == data || 1 > data_size)
+//        {
+//                return PC_ERROR_ARGS;
+//        }
+//
+//        if (PICO_CONFIG_MAX_DATA < data_size)
+//        {
+//                return PC_ERROR_PAYLOAD_OUT_OF_BOUNDS;
+//        }
 
         uint8_t id = data[0] & ID_MASK;
         uint8_t flags = data[0] & FLAGS_MASK;
@@ -216,7 +218,7 @@ int32_t pico_config_receive(struct pico_config *pc,
                 }
         }
 
-        return PC_NO_ERROR;
+//        return PC_NO_ERROR;
 }
 
 void pico_config_run(struct pico_config *pc, 

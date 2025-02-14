@@ -45,8 +45,11 @@ int32_t pico_config_send_request(struct pico_config *pc, int8_t id,
                                  uint8_t *data, size_t data_size, 
 				 bool wait_for_ack);
 
-int32_t pico_config_receive(struct pico_config *pc, 
-			    uint8_t *data, size_t data_size);
+void pico_config_receive(struct pico_config *pc, 
+			 uint8_t *data, size_t data_size);
+
+//int32_t pico_config_receive(struct pico_config *pc, 
+//			    uint8_t *data, size_t data_size);
 
 
 void pico_config_run(struct pico_config *pc, 
