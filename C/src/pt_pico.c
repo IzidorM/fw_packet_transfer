@@ -134,7 +134,7 @@ int32_t pt_pico_receiver_process_payload(struct pt *p, bool *done)
 
 				pt_debug("forwarding payload to next layer: \n");
 
-				for (uint32_t i = 0; (prx->buff_expected_data_size-2) > i; i++)
+				for (int32_t i = 0; (prx->buff_expected_data_size-2) > i; i++)
 				{
 					pt_debug("0x%x, ", prx->buff[1+i]);
 				}
