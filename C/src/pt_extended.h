@@ -3,20 +3,20 @@
 
 #define PT_EXT_START_PACKET_SIZE 10
 
-enum pt_extended_package_types {
-        PT_EXTENDED_PACKAGE_TYPE_FIRST = 1,
-        PT_EXTENDED_PACKAGE_TYPE_PAYLOAD = 2,
-        PT_EXTENDED_PACKAGE_TYPE_LAST = 3,
-        PT_EXTENDED_PACKAGE_TYPE_RESPONSE = 4,
+enum pt_ext_tx_rsp_status {
+	PT_EXT_TX_DONE,
+	PT_EXT_TX_TIMEOUT,
 };
 
+void pt_extended_receiver_reset(struct pt *p);
 
-struct pt_extended_package_start_package {
-	uint8_t header;
-	uint32_t full_payload_size;
-	uint32_t payload_packet_payload_size;
-	uint8_t bsd8_cs;
-};
+enum pt_errors 
+pt_extended_send(struct pt *p, 
+		 uint8_t *data, 
+		 size_t data_size,
+		 void (*done_callback)(enum pt_ext_tx_rsp_status));
 
+
+void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms);
 
 #endif
