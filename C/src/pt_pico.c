@@ -22,17 +22,6 @@
 
 #include "byte_fifo.h"
 
-#ifdef STATIC
-#error "STATIC declared outside of the .c file"
-#endif
-
-#ifdef UNIT_TESTS
-#define STATIC
-#else
-#define STATIC static
-#endif
-
-
 STATIC uint8_t pt_make_pico_header(size_t data_size)
 {
         uint8_t h;
@@ -69,10 +58,10 @@ int32_t pt_pico_send(struct pt *p, uint8_t *data, size_t data_size)
 	cs = bsd_checksum8_from(cs, data, data_size);		
 	byte_fifo_write(p->tx_fifo, cs);
 
-	pt_debug("sending out pico packet of len: %i\n", data_size+2);
+	pt_debug("sending out pico packet of len: %i\n", (uint32_t) data_size+2);
 
 	pt_debug("0x%x, ", header);
-	for (uint32_t i = 0; data_size > i; i++)
+	for (i = 0; data_size > i; i++)
 	{
 		pt_debug("0x%x, ", data[i]);
 	}
@@ -134,7 +123,7 @@ int32_t pt_pico_receiver_process_payload(struct pt *p, bool *done)
 
 				pt_debug("forwarding payload to next layer: \n");
 
-				for (uint32_t i = 0; (prx->buff_expected_data_size-2) > i; i++)
+				for (int32_t i = 0; (prx->buff_expected_data_size-2) > i; i++)
 				{
 					pt_debug("0x%x, ", prx->buff[1+i]);
 				}

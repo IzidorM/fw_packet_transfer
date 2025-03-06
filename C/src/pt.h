@@ -20,17 +20,9 @@ enum pt_errors {
         PT_ERROR_BUSY = -6,
 	PT_ERROR_CHECKSUM_FAILED = -7,
 	PT_ERROR_PACKET_NUMBER_FAILED = -8,
+	PT_ERROR_UNKNOWN_PACKET_TYPE = -9,
+	PT_ERROR_OUT_OF_MEMORY = -10,
 };
-
-#ifdef PT_EXTENDED_PACKET_SUPPORT
-
-struct pt_extended_settings {
-        uint8_t *full_data_buff;
-        uint32_t full_data_buff_size;
-        int32_t (*rx_callback)(uint8_t *data, size_t data_size);
-        uint8_t max_rx_payload_size_per_packet;
-};
-#endif
 
 struct pt_settings {
         void *(*malloc)(size_t);
@@ -41,9 +33,9 @@ struct pt_settings {
         uint16_t rx_timeout_ms;
 
 #ifdef PT_EXTENDED_PACKET_SUPPORT
-
         uint8_t tx_retries;
-//        uint16_t tx_rsp_timeout_ms;
+        uint16_t tx_rsp_timeout_ms;
+	uint8_t *(*request_memory)(size_t data_size);
 #endif
 
 };
@@ -62,13 +54,5 @@ void pt_pico_register_rx_callback(
 	void *high_layer_data, 
 	void (*high_layer_callback)(void *, uint8_t *, size_t));
 	
-
-#ifdef PT_DEBUG
-#include <stdarg.h>
-void pt_debug(const char *format, ...);
-#else
-#include "debug_io.h"
-#define  pt_debug dmsg
-#endif
 
 #endif

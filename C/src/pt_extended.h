@@ -8,8 +8,6 @@ enum pt_ext_tx_rsp_status {
 	PT_EXT_TX_TIMEOUT,
 };
 
-void pt_extended_receiver_reset(struct pt *p);
-
 enum pt_errors 
 pt_extended_send(struct pt *p, 
 		 uint8_t *data, 
@@ -18,5 +16,6 @@ pt_extended_send(struct pt *p,
 
 
 void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms);
+
 
 #endif

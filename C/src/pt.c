@@ -14,34 +14,6 @@
 
 #include "byte_fifo.h"
 
-#ifdef STATIC
-#error "STATIC declared outside of the .c file"
-#endif
-
-#ifdef UNIT_TESTS
-#define STATIC
-#else
-#define STATIC static
-#endif
-
-#include <stdarg.h>
-#ifdef PT_DEBUG
-#include <stdio.h>
-void pt_debug(const char *format, ...)
-{
-        //printf("[PT] ");
-        va_list va;
-        va_start(va, format);
-        vprintf(format, va);
-        va_end(va);
-}
-#else
-#define pt_debug dmsg
-//void pt_debug(const char *format, ...)
-//{
-//
-//}
-#endif // PT_DEBUG
 
 static void pt_receiver_check_header(struct pt *p, uint8_t header)
 {
@@ -58,9 +30,18 @@ static void pt_receiver_check_header(struct pt *p, uint8_t header)
 	{
 		pt_debug("Receiving extended packet\n");
 
-		pt_extended_rx_header(p, header);
-		p->pt_receive_state = 
-			PT_RX_RECEIVING_EXTENDED_PACKET;
+		enum pt_errors r = pt_extended_rx_header(p, header);
+		if (r)
+		{
+			pt_debug("E: Extended packet header error\n");
+			p->pt_receive_state = 
+				PT_DROP_DATA_UNTIL_TIMEOUT;
+		}
+		else
+		{
+			p->pt_receive_state = 
+				PT_RX_RECEIVING_EXTENDED_PACKET;
+		}
 	}
 #endif
 	else
@@ -90,8 +71,9 @@ enum pt_errors pt_receiver_run(struct pt *p, uint32_t time_from_last_call_ms)
                 p->pt_receive_state = PT_RX_WAITING_FIRST_BYTE;
 	
                 pico_rx_reset(p);
+
 #ifdef PT_EXTENDED_PACKET_SUPPORT
-		pt_extended_receiver_reset(p);
+		pt_extended_receiver_prepare_for_new_subpacket(p);
 #endif
         }
 	
@@ -126,26 +108,30 @@ enum pt_errors pt_receiver_run(struct pt *p, uint32_t time_from_last_call_ms)
                 else if (PT_RX_RECEIVING_EXTENDED_PACKET == p->pt_receive_state)
                 {
                         bool processing_done = false;
+			struct pt_extended_data_rx_subpacket *subpack_rx = 
+				&p->pt_ext_rx.subpacket_rx;
 
 			// TODO: Solve this better
-			if(NULL == p->pt_ext_rx.pt_extended_receive_packet)
+			if(NULL == subpack_rx->pt_extended_receive_subpacket)
 			{
 				// this should never happen :)
 				return PT_ERROR_IMPLEMENTATION;
 			}
 
-			r = p->pt_ext_rx.pt_extended_receive_packet(
+			r = subpack_rx->pt_extended_receive_subpacket(
 				p, 
 				time_from_last_call_ms,
 				&processing_done);
 			
                         if (PT_NO_ERROR != r)
                         {
+				pt_debug("ext packet error\n\n");
                                 p->pt_receive_state = 
 					PT_DROP_DATA_UNTIL_TIMEOUT;
                         }
 			else if (processing_done)
 			{
+				pt_debug("ext packet receiveing done\n\n");
                                 p->pt_receive_state = 
 					PT_RX_WAITING_FIRST_BYTE;
 			}
@@ -165,6 +151,9 @@ enum pt_errors pt_receiver_run(struct pt *p, uint32_t time_from_last_call_ms)
 struct pt *pt_init(struct pt_settings *s)
 {
         if (NULL == s || NULL == s->rx_fifo 
+#ifdef PT_EXTENDED_PACKET_SUPPORT
+	    || (NULL == s->request_memory)
+#endif
 	    || NULL == s->tx_fifo || NULL == s->malloc)
         {
                 return NULL;
@@ -181,10 +170,13 @@ struct pt *pt_init(struct pt_settings *s)
         tmp->rx_fifo = s->rx_fifo;
 
 #ifdef PT_EXTENDED_PACKET_SUPPORT
-//        tmp->timeout_rsp_tx_ms = s->tx_rsp_timeout_ms;
+
+        tmp->timeout_rsp_tx_ms = s->tx_rsp_timeout_ms;
         tmp->timeout_rx_ms = s->rx_timeout_ms;
 
         tmp->max_packet_payload_size = 240;
+
+	tmp->request_memory = s->request_memory;
 
 #endif
 
