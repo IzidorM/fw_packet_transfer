@@ -41,18 +41,19 @@ The rest of the bits are specific to the packet type
 
 **** extended
 
-| fild name | bits  | description             |
-|-----------+-------+-------------------------|
-| msg type  | 5,4,3 | 0: start                |
-|           |       | 1: payload              |
-|           |       | 2: last                 |
-|           |       | 3: response             |
-|-----------+-------+-------------------------|
-| flags     | 2,1,0 | If message is response: |
-|           |       | 0: ack                  |
-|           |       | 1: nack                 |
-|           |       | 2-7: reserved           |
-|-----------+-------+-------------------------|
+| fild name | bits    | description        |
+|-----------+---------+--------------------|
+| msg type  | 5,4     | 0: not_defined     |
+|           |         | 1: start           |
+|           |         | 2: payload         |
+|           |         | 3: response        |
+|-----------+---------+--------------------|
+| reserved  | 4,3,2,1 | for future use     |
+|-----------+---------+--------------------|
+| ack flag  | 0       | if msg is response |
+|           |         | 0:nack, 1: ack     |
+|-----------+---------+--------------------|
+
 
 *** pico payload
 
@@ -63,8 +64,24 @@ there is 1 byte of checksum. The checksum is bsd 1byte checksum.
 
 *** extended payload
 
-TODO:....
+Payload is broken in multiple subpackets. First the subpacket start is
+send and after it, the rest of the payload is sent in payload packets
 
+**** start message 
+[ common header (1byte), 
+  subpacket payload max size (1byte),
+  start_packet_payload_cs (2 bytes, little endian),
+  full payload size (4 bytes, little endian),
+  full payload cs (4 bytes, little endian),
+  header cs (1 byte),
+]
+
+**** payload message
+[ common header (1byte), 
+  packet number (2bytes, little endian),
+  payload cs (2bytes, little endian),
+  header cs (1 byte),
+]
 
 *** pico transfer protocol
 
@@ -72,8 +89,51 @@ Pico transfers are stateless, so sender sends the pico packet and
 forgets about it. There is no feedback from the receiver if the packet
 was received.
 
-
 *** extended transfer protocol
+
+**** normal transfer
+
+To accomplish the transfer of the full packet payload, first the start
+packet is sent. The start packet has first subpacket_payload_max_size
+number of full payload bytes. If the full payload is bigger than this,
+the rest is send in the payload packets. The speed of sending the
+packets out is defined by lower network layer. When all the packets
+are received by the reciever, the receiver sends back an response
+packet with ack flag set if the payload is ok and nack flag set
+otherwise.
+
+**** packet lost/corrupted case
+
+If there is an error detected by the receiver, the receiver will send
+back the response packet with nack flag set and the last successfull
+received packet number. The sender should stop sending out packets,
+wait for the connection idle time to pass and the start sending out
+from the last successfully received packet number. 
+
+***** special case 1: start packet lost/corrupted or receiver receives garbage
+
+If the start packet is damaged/lost or the receiver will receive some
+garbage, the receiver will replay with the response packet with nack
+flag and the packet number 0. When the sender receives this response,
+it should stop transmitting for 2x connection idle time.
+
+***** special case 2: stop packet received before all payload packets
+
+If receiver will receive the last packet before all the payload packts
+are received, it will discharge it and send back the response packet
+with nack and the last received block number. The sender response
+should be the same as in special case 1.
+
+***** special case 3: last packet lost or last few packets lost
+
+If the receiver stops receiving packets for connection idle time after
+the reception of start packet and before the last packet is received,
+it will send out the response packet with nack and last successfully
+received block number. In this cast sender doesnt need to wait for the
+idle time.
+
+
+*/
 
 
 

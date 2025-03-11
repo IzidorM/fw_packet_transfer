@@ -206,23 +206,48 @@ void pt_ext_move_tx_state(struct pt *p,
 
 void pt_extended_tx_full_packet_done_cleanup(struct pt *p);
 
+void 
+pt_extended_fill_start_packet_header(
+	struct pt *p,
+	struct pt_extended_start_packet_header *h,
+	size_t start_packet_payload_size);
+
+void 
+pt_extended_sent_start_packet(
+	struct pt *p,
+	struct pt_extended_start_packet_header *h,
+	size_t start_packet_payload_size);
+
 enum pt_errors pt_extended_send_start_packet(struct pt *p);
-int32_t pt_extended_receive_packets_payload(struct pt *p, 
-					    bool *packet_done);
+
+void 
+pt_extended_fill_payload_packet_header(
+	struct pt *p,
+	struct pt_extended_payload_packet_header *h,
+	size_t packet_payload_size);
+
+void 
+pt_extended_sent_payload_packet(
+	struct pt *p,
+	struct pt_extended_payload_packet_header *h,
+	size_t packet_payload_size);
 
 enum pt_errors pt_extended_send_next_payload_packet(struct pt *p);
+
+int32_t pt_extended_receive_packets_payload(struct pt *p, 
+					    bool *packet_done);
 
 void pt_extended_send_response(struct pt *p, bool ack);
 
 uint32_t 
-pt_extended_receiver_start_packet(struct pt *p, 
-				  uint32_t time_from_last_call_ms,
-				  bool *packet_done);
+pt_extended_rx_start_packet(struct pt *p, 
+			    uint32_t time_from_last_call_ms,
+			    bool *packet_done);
 
 uint32_t 
-pt_extended_receiver_payload_packet(struct pt *p, 
-				    uint32_t time_from_last_call_ms,
-				    bool *packet_done);
+pt_extended_rx_payload_packet(struct pt *p, 
+			      uint32_t time_from_last_call_ms,
+			      bool *packet_done);
 
 
 void pt_extended_rx_full_packet_done_cleanup(struct pt *p);
