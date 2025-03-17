@@ -107,33 +107,37 @@ otherwise.
 If there is an error detected by the receiver, the receiver will send
 back the response packet with nack flag set and the last successfull
 received packet number. The sender should stop sending out packets,
-wait for the connection idle time to pass and the start sending out
-from the last successfully received packet number. 
+wait for more than the rx connection idle time to pass and then start
+sending out from the last successfully received packet number.
 
-***** special case 1: start packet lost/corrupted or receiver receives garbage
+***** special case 1: start packet corrupted or missing
 
-If the start packet is damaged/lost or the receiver will receive some
-garbage, the receiver will replay with the response packet with nack
-flag and the packet number 0. When the sender receives this response,
-it should stop transmitting for 2x connection idle time.
+If the start packet is damaged (foo crc) or was lost, so payload
+packet is received with no start packet before, the receiver will
+replay with the response packet with nack flag and the packet number
+0. When the sender receives this response, it should stop transmitting
+for more than rx connection idle time.
 
-***** special case 2: stop packet received before all payload packets
+***** special case 2: start packet contains whole payload and was lost
 
-If receiver will receive the last packet before all the payload packts
-are received, it will discharge it and send back the response packet
-with nack and the last received block number. The sender response
-should be the same as in special case 1.
+If start packet is the only packet so the sender expects a nack/ack
+after the start packet and start packet was lost, it needs to resend
+the start packet after the tx timeout.
 
-***** special case 3: last packet lost or last few packets lost
+***** special case 3: nack/ack packet was lost
+
+If sender doesnt receive ack/nack packet after all the payload packets were sent,
+it needs to send the last payload packet again after the tx timeout
+
+***** special case 4: last packet lost or last few packets lost
 
 If the receiver stops receiving packets for connection idle time after
-the reception of start packet and before the last packet is received,
-it will send out the response packet with nack and last successfully
-received block number. In this cast sender doesnt need to wait for the
-idle time.
+the reception of start packet and before the last payload packet is
+received, it will send out the response packet with nack a nd last
+successfully received block number. In this cast sender doesnt need to
+wait for the idle time and should restart sending payload packets from
+the packet number received in ack/nack packet...
 
-
-*/
 
 
 
