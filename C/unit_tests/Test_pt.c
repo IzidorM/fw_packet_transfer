@@ -13,6 +13,24 @@
 #include "bsd_checksum.h"
 #include "byte_fifo.h"
 
+#include <stdarg.h>
+#include <stdio.h>
+
+static bool disable_output = false;
+void pt_debug(const char *format, ...)
+{
+	if (disable_output)
+	{
+		return;
+	}
+        //printf("[PT] ");
+        va_list va;
+        va_start(va, format);
+        vprintf(format, va);
+        va_end(va);
+}
+
+
 struct pt *pt = NULL;
 
 struct byte_fifo *ftx = NULL;
@@ -28,7 +46,7 @@ void tp_ext_tx_done_callback_test(enum pt_ext_tx_rsp_status s)
 {
 	tp_ext_tx_done_callback_test_call_cnt += 1;
 	last_tx_done_status = s;
-	printf("tx done called %i times, status %i\n",
+	pt_debug("tx done called %i times, status %i\n",
 	       tp_ext_tx_done_callback_test_call_cnt, s);
 }
 
@@ -69,6 +87,7 @@ void pt_pico_packet_rx_complete(void *dlp, uint8_t *data, size_t data_size)
 
 void setUp(void)
 {
+	disable_output = true;
 	callback_cnt = 0;
 	tp_ext_tx_done_callback_test_call_cnt = 0;
 	ext_full_packet_cb_cnt = 0;
@@ -114,6 +133,7 @@ void setUp(void)
 
 void tearDown(void)
 {
+	disable_output = false;
 	if (ext_full_payload_data)
 	{
 		free(ext_full_payload_data);
@@ -702,7 +722,7 @@ void test_pt_ext_send_packet_less_than_full_size(void)
 
 
 	// lets try to send another packet
-	printf("test: sending second packet\n");
+	pt_debug("test: sending second packet\n");
 	// change payload data
 	for (uint32_t i = 0; i < sizeof(data); i++) 
 	{
@@ -810,7 +830,7 @@ void test_pt_ext_send_packet_bigger_than_only_start_packet(void)
 
 
 	// lets try to send another packet
-	printf("test: sending second packet\n");
+	pt_debug("test: sending second packet\n");
 	// change payload data
 	for (uint32_t i = 0; i < sizeof(data); i++) 
 	{
@@ -1039,6 +1059,185 @@ void test_pt_ext_start_packet_reset_previous_transfer(void)
 
 }
 
+void test_pt_ext_rx_nack_when_tx_idle(void)
+{
+	enum pt_errors r;
+
+	pt_extended_tx_full_packet_done_cleanup(pt);
+	pt_extended_rx_full_packet_done_cleanup(pt);
+
+	pt_extended_send_response(pt, false); 
+	pt_extended_tx_run(pt, 1); 
+
+	r = pt_receiver_run(pt, 1); // handle nack	
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_IDLE,
+				pt->pt_ext_tx.tx_state);
+}
+
+void test_pt_ext_nack_start_packet(void)
+{
+	disable_output = false;
+	enum pt_errors r;
+	uint8_t data[pt->max_packet_payload_size * 2];
+
+	// reset the pt_ext 
+	pt_extended_tx_full_packet_done_cleanup(pt);
+	pt_extended_rx_full_packet_done_cleanup(pt);
+
+	pt_extended_register_packet_received_callback(
+		pt, ext_full_packet_cb);
+
+
+	r = pt_extended_send(pt,
+			     data, 
+			     sizeof(data),
+			     tp_ext_tx_done_callback_test);
+
+	//pt_extended_tx_run(pt, 1); // sent start packet
+	pt_extended_send_start_packet(pt);
+	pt->pt_ext_tx.tx_state = PT_EXT_TX_STATE_SEND_PAYLOAD_PACKET;
+
+	byte_fifo_reset(ftx); // simulate packet lost :D
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_SEND_PAYLOAD_PACKET,
+				pt->pt_ext_tx.tx_state);
+
+	// request nack packet
+	pt_extended_send_response(pt, false);
+	TEST_ASSERT_TRUE(pt->pt_ext_tx.send_response);
+	TEST_ASSERT_EQUAL_INT32(0, 
+				pt->pt_ext_tx.response_packet_number);
+
+
+	pt_extended_tx_run(pt, 1); // sent nack response packet
+
+
+	// receive nack response packet
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	// check if the first packet will be retransmitted
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_WAIT_IDLE_TIMEOUT,
+				pt->pt_ext_tx.tx_state);
+
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_SEND_START_PACKET,
+				pt->pt_ext_tx.tx_state_before_nack);
+
+	// test if we will get the packet now
+	pt_extended_tx_run(pt, pt->timeout_tx_ms);
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_WAIT_RSP,
+				pt->pt_ext_tx.tx_state);
+
+	TEST_ASSERT_EQUAL_INT32(0,
+				ext_full_packet_cb_cnt); 
+
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	TEST_ASSERT_EQUAL_INT32(1,
+				ext_full_packet_cb_cnt); 
+
+	TEST_ASSERT_EQUAL_INT32(sizeof(data),
+				ext_full_payload_data_size);
+
+	TEST_ASSERT_EQUAL_MEMORY(
+		data,
+		ext_full_payload_data,
+		ext_full_payload_data_size);
+}
+
+void test_pt_ext_start_packet_missing(void)
+{
+	enum pt_errors r;
+	uint8_t data[pt->max_packet_payload_size * 4];
+
+	// reset the pt_ext 
+	pt_extended_tx_full_packet_done_cleanup(pt);
+	pt_extended_rx_full_packet_done_cleanup(pt);
+
+	pt_extended_register_packet_received_callback(
+		pt, ext_full_packet_cb);
+
+	// make ext start packet and send it
+	pt->pt_ext_tx.tx_state = PT_EXT_TX_STATE_SEND_START_PACKET;
+	pt->pt_ext_tx.data = data;
+	pt->pt_ext_tx.data_size = sizeof(data);
+	pt->pt_ext_tx.data_already_sent = pt->max_packet_payload_size;
+//	struct pt_extended_start_packet_header hs;
+//
+//	pt_extended_fill_start_packet_header(
+//		pt, &hs, pt->max_packet_payload_size);
+//
+//	pt_extended_sent_start_packet(
+//		pt, &hs, pt->max_packet_payload_size);
+//
+//	r = pt_receiver_run(pt, 1);
+//	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+//	// all bytes should be used by tx/rx (it is same fifo)
+//	TEST_ASSERT_EQUAL_INT32(0, 
+//				byte_fifo_get_fill_count(pt->tx_fifo));
+//
+//	// receiver should be in state waiting new packet
+//	TEST_ASSERT_EQUAL_UINT8(PT_RX_WAITING_FIRST_BYTE,
+//				pt->pt_receive_state);
+
+	// generate payload packet with foo header crc
+	struct pt_extended_payload_packet_header hp;
+
+	pt_extended_fill_payload_packet_header(
+		pt, &hp, pt->max_packet_payload_size);
+
+	pt_extended_sent_payload_packet(
+		pt, &hp, pt->max_packet_payload_size);
+
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+	TEST_ASSERT_EQUAL_INT32(0, 
+				byte_fifo_get_fill_count(pt->tx_fifo));
+
+	// receiver should be in drop mode due crc error
+	TEST_ASSERT_EQUAL_UINT8(PT_DROP_DATA_UNTIL_TIMEOUT,
+				pt->pt_receive_state);
+
+	// and it should indicate that response (nack) packet should
+	// be sent back
+	TEST_ASSERT_TRUE(pt->pt_ext_tx.send_response);
+
+	// nack packet number should be 1 -> payload packet which needs
+	// to be retransmitted
+	TEST_ASSERT_EQUAL_INT32(0, 
+				pt->pt_ext_tx.response_packet_number);
+
+	return;
+
+
+
+	// send the respnse packet
+	pt_extended_tx_run(pt, 1);
+	TEST_ASSERT_FALSE(pt->pt_ext_tx.send_response);
+
+	TEST_ASSERT_EQUAL_INT32(4, //response packet
+				byte_fifo_get_fill_count(pt->tx_fifo));
+
+
+	// receive the nack response packet
+	r = pt_receiver_run(pt, pt->timeout_rx_ms+1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	// check that the received data is as expected
+	TEST_ASSERT_EQUAL_INT32(pt->max_packet_payload_size, 
+				pt->pt_ext_tx.data_already_sent);
+
+	TEST_ASSERT_EQUAL_INT32(
+		pt->max_packet_payload_size, 
+		pt->pt_ext_rx.full_payload_buffer_fill_index);
+
+	TEST_ASSERT_EQUAL_MEMORY(
+		data,
+		pt->pt_ext_rx.full_payload_buffer,
+		pt->max_packet_payload_size);
+}
+
 void test_pt_ext_nack_retransmit_from_last_valid_packet(void)
 {
 	enum pt_errors r;
@@ -1203,8 +1402,8 @@ void test_pt_ext_nack_retransmit_from_last_valid_packet(void)
 				pt->pt_ext_tx.response_packet_number);
 
 
-	// send the respnse packet
-	pt_extended_tx_run(pt, 1);
+	// send the respnse packet after timeout
+	pt_extended_tx_run(pt, pt->timeout_tx_ms);
 	TEST_ASSERT_FALSE(pt->pt_ext_tx.send_response);
 
 	TEST_ASSERT_EQUAL_INT32(4, //response packet
@@ -1284,9 +1483,87 @@ void test_pt_ext_nack_retransmit_from_last_valid_packet(void)
 		data,
 		ext_full_payload_data,
 		ext_full_payload_data_size);
+}
+
+
+void test_pt_ext_tx_wait_after_nack_received(void)
+{
+	enum pt_errors r;
+	uint8_t data[pt->max_packet_payload_size * 4];
+
+	// reset the pt_ext 
+	pt_extended_tx_full_packet_done_cleanup(pt);
+	pt_extended_rx_full_packet_done_cleanup(pt);
+
+
+
+	r = pt_extended_send(pt,
+			     data, 
+			     sizeof(data),
+			     tp_ext_tx_done_callback_test);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+
+	pt_extended_tx_run(pt, 1); // send start packet
+	r = pt_receiver_run(pt, 1); // handle nack
+	pt_extended_tx_run(pt, 1); // send first payload packet
+	byte_fifo_reset(ftx); // simulate packet lost :D
+
+        // send nack
+	pt_extended_send_response(pt, false); 
+	pt_extended_tx_run(pt, 1); 
+
+	// receive nack
+	r = pt_receiver_run(pt, 1); // handle nack
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	// now tx should be in wait for timeout state
+	TEST_ASSERT_EQUAL_INT32(PT_EXT_TX_STATE_WAIT_IDLE_TIMEOUT,
+				pt->pt_ext_tx.tx_state);
+
+
+	// it should still be dropping packets after 2ms delay
+	r = pt_receiver_run(pt, 1); // handle nack
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	// now tx should be in wait for timeout state
+	TEST_ASSERT_EQUAL_INT32(PT_EXT_TX_STATE_WAIT_IDLE_TIMEOUT,
+				pt->pt_ext_tx.tx_state);
+
+	// it should go back to idle after p->timeout_tx_ms delay
+	pt_extended_tx_run(pt, pt->timeout_tx_ms);
+
+	// now tx should be in wait for timeout state
+	TEST_ASSERT_EQUAL_INT32(PT_EXT_TX_STATE_SEND_PAYLOAD_PACKET,
+				pt->pt_ext_tx.tx_state);
+
+
+	pt_extended_tx_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_EXT_TX_STATE_WAIT_RSP,
+				pt->pt_ext_tx.tx_state);
+
+	// just for fun test if we can receive the packet:)
+	TEST_ASSERT_EQUAL_INT32(0,
+				ext_full_packet_cb_cnt); 
+
+	r = pt_receiver_run(pt, 1); // handle nack
+	pt_extended_tx_run(pt, 1); // send first payload packet
+
+
+	TEST_ASSERT_EQUAL_INT32(1,
+				ext_full_packet_cb_cnt); 
+
+	TEST_ASSERT_EQUAL_INT32(sizeof(data),
+				ext_full_payload_data_size);
+
+	TEST_ASSERT_EQUAL_MEMORY(
+		data,
+		ext_full_payload_data,
+		ext_full_payload_data_size);
 
 }
 
 // TODO
 // TEST mixed pico and ext packets
 // TEST if part of payload/header is missing (timeout)
+// TEST for a missing packet (seq number bigger than expected)

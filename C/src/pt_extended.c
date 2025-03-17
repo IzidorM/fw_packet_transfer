@@ -48,31 +48,6 @@ STATIC uint16_t pt_ext_read_uint16_from_buff(uint8_t *buff)
 	return (uint16_t) (buff[0] | buff[1] << 8);
 }
 
-
-//STATIC uint32_t pt_ext_read_uint32_from_fifo(struct pt *p)
-//{
-//	uint32_t data = 0;
-//	uint8_t *d = (uint8_t *) &data;
-//
-//	d[0] = byte_fifo_read(p->rx_fifo);
-//	d[1] = byte_fifo_read(p->rx_fifo);
-//	d[2] = byte_fifo_read(p->rx_fifo);
-//	d[3] = byte_fifo_read(p->rx_fifo);
-//
-//	return data;
-//}
-//
-//STATIC uint16_t pt_ext_read_uint16_from_fifo(struct pt *p)
-//{
-//	uint16_t data = 0;
-//	uint8_t *d = (uint8_t *) &data;
-//
-//	d[0] = byte_fifo_read(p->rx_fifo);
-//	d[1] = byte_fifo_read(p->rx_fifo);
-//
-//	return data;
-//}
-
 STATIC size_t pt_ext_get_packet_payload_size(struct pt *p)
 {
 	size_t data_left_to_send = p->pt_ext_tx.data_size 
@@ -304,6 +279,18 @@ void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms)
 {
 	struct pt_extended_data_tx *pd = &p->pt_ext_tx;
 	pd->time_passed_in_state_ms += time_from_last_call_ms;
+
+	if (PT_EXT_TX_STATE_WAIT_IDLE_TIMEOUT == pd->tx_state)
+	{
+		if (pd->time_passed_in_state_ms >= p->timeout_tx_ms)
+		{
+			pd->tx_state = pd->tx_state_before_nack;
+		}
+		else
+		{
+			return;
+		}
+	}
 
 	if (p->pt_ext_tx.send_response)
 	{
@@ -704,7 +691,8 @@ pt_extended_rx_payload_packet(struct pt *p,
 
 			if (pe_rx->last_received_packet_number != packet_number)
 			{
-				// packet number error
+				// send back nack
+				pt_extended_send_response(p, false);
 				return PT_ERROR_PACKET_NUMBER_FAILED;
 			}
 
@@ -729,11 +717,9 @@ pt_extended_rx_handle_nack(struct pt *p)
 	struct pt_extended_data_rx_subpacket *subpack_rx = 
 		&p->pt_ext_rx.subpacket_rx;
 	
-
 	uint16_t last_packet_number = 
 		subpack_rx->payload_buffer[0] 
 		| subpack_rx->payload_buffer[1] << 8;
-
 
 	pt_debug("N: %i, %i\n", last_packet_number,
 		 pe_rx->last_received_packet_number);
@@ -749,6 +735,20 @@ pt_extended_rx_handle_nack(struct pt *p)
 	// correct the tx to go back to last valid data
 	p->pt_ext_tx.data_already_sent = last_packet_number
 		* p->max_packet_payload_size;
+
+	if (last_packet_number)
+	{
+		p->pt_ext_tx.tx_state_before_nack = 
+			p->pt_ext_tx.tx_state;
+	}
+	else
+	{
+		// if nack is for the start packet,
+		// go back to state sending start after timeout
+		p->pt_ext_tx.tx_state_before_nack = 
+			PT_EXT_TX_STATE_SEND_START_PACKET;
+	}
+	pt_ext_move_tx_state(p, PT_EXT_TX_STATE_WAIT_IDLE_TIMEOUT);
 
 }
 
@@ -787,6 +787,12 @@ pt_extended_rx_response_packet(struct pt *p,
 		}
 
 		*packet_done = true;
+
+		// we dont expect rsp packet, so just drop it
+		if (PT_EXT_TX_STATE_IDLE == p->pt_ext_tx.tx_state)
+		{
+			return PT_NO_ERROR;
+		}
 
 		if (subpack_rx->header & PT_EXT_ACK_FLAG)
 		{

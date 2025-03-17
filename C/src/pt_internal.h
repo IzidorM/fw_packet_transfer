@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "pt_pico.h"
+#include "pt_extended.h"
 
 #ifdef STATIC
 #error "STATIC declared outside of the .c file"
@@ -22,27 +23,7 @@
 #define STATIC static
 #endif
 
-
-#ifdef PT_DEBUG
-#include <stdarg.h>
-#include <stdio.h>
-#define pt_debug printf
-//void pt_debug(const char *format, ...)
-//{
-//        //printf("[PT] ");
-//        va_list va;
-//        va_start(va, format);
-//        vprintf(format, va);
-//        va_end(va);
-//}
-#else
-#define pt_debug dmsg
-//void pt_debug(const char *format, ...)
-//{
-//
-//}
-#endif // PT_DEBUG
-
+void pt_debug(const char *format, ...);
 
 #ifdef PT_EXTENDED_PACKET_SUPPORT
 #include "pt_extended.h"
@@ -109,11 +90,13 @@ enum pt_ext_tx_state {
 	PT_EXT_TX_STATE_SEND_START_PACKET,
 	PT_EXT_TX_STATE_SEND_PAYLOAD_PACKET,
 	PT_EXT_TX_STATE_WAIT_RSP,
+	PT_EXT_TX_STATE_WAIT_IDLE_TIMEOUT,
 };
 
 struct pt_extended_data_tx {
 	uint32_t time_passed_in_state_ms;
 	enum pt_ext_tx_state tx_state;
+	enum pt_ext_tx_state tx_state_before_nack;
 
 	uint8_t *data;
 	size_t data_size;
@@ -175,6 +158,7 @@ struct pt {
 	struct byte_fifo *rx_fifo;
 
         uint16_t timeout_rx_ms;
+        uint16_t timeout_tx_ms;
 
         // pt ext time to wait for ack after payload transfered
         uint16_t timeout_rsp_tx_ms; 
@@ -186,6 +170,7 @@ struct pt {
 
 #ifdef PT_EXTENDED_PACKET_SUPPORT
 	uint8_t max_packet_payload_size;
+
 	struct pt_extended_data_tx pt_ext_tx;
 
 	struct pt_extended_data_rx pt_ext_rx;

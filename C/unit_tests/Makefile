@@ -40,8 +40,8 @@ C_FLAGS+=-g -ggdb3 \
 	-fsanitize=address,undefined \
 
 DEFINES+=-D UNIT_TESTS \
+	-D PT_EXTENDED_PACKET_SUPPORT \
 	-D PT_DEBUG \
-	-D PT_EXTENDED_PACKET_SUPPORT
 
 UNITY_INC_FILES = $(TOOLS_DIR)/Unity/src/
 UNITY_SRC_FILES = $(TOOLS_DIR)/Unity/src/unity.c

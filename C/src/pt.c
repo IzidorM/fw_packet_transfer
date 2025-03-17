@@ -173,6 +173,7 @@ struct pt *pt_init(struct pt_settings *s)
 
         tmp->timeout_rsp_tx_ms = s->tx_rsp_timeout_ms;
         tmp->timeout_rx_ms = s->rx_timeout_ms;
+        tmp->timeout_tx_ms = s->rx_timeout_ms+2;
 
         tmp->max_packet_payload_size = 240;
 
