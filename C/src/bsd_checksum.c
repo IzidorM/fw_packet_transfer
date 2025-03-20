@@ -6,6 +6,7 @@
 
 #include <inttypes.h>
 #include <string.h>
+#include <stdio.h>
 
 uint8_t bsd_checksum8_from(uint8_t start_checksum, uint8_t *data, size_t data_size)
 {
@@ -30,7 +31,7 @@ uint16_t bsd_checksum16(uint8_t *data, size_t data_size)
         uint32_t i;
         for (i = 0; data_size > i; i++)
         {
-                checksum = (uint8_t )((checksum >> 1) + ((checksum & 1) << 15));
+                checksum = (uint16_t )((checksum >> 1) + ((checksum & 1) << 15));
                 checksum += data[i];
         }
         return checksum;
