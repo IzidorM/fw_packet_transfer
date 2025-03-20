@@ -17,5 +17,9 @@ pt_extended_send(struct pt *p,
 
 void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms);
 
+void pt_extended_register_packet_received_callback(
+	struct pt *p, 
+	void (*cb)(uint8_t *data, size_t data_size));
+
 
 #endif

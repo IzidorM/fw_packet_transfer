@@ -31,6 +31,4 @@ void pt_pico_register_rx_callback(
 	void *high_layer_data, 
 	void (*high_layer_callback)(void *, uint8_t *, size_t));
 
-void pt_extended_register_packet_received_callback(struct pt *p, void (*cb)(uint8_t *data, size_t data_size));
-
 #endif
