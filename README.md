@@ -18,7 +18,7 @@ A simplistic protocol allows transferring payloads of up to 64 bytes. It include
 
 ### Extended Packet Protocol
 
-Designed for transferring larger payloads (up to 4GB), this protocol includes start, payload, and end messages, supporting basic error checking and retransmissions for reliable data transfer.
+Designed for transferring larger payloads (up to 4GB), this protocol includes start, payload, and response messages, supports basic error checking and retransmissions for reliable data transfer.
 
 ## Size Measurement
 
