@@ -126,7 +126,7 @@ pt_extended_sent_start_packet(
 	struct pt_extended_start_packet_header *h,
 	size_t start_packet_payload_size)
 {
-
+	printf("Sending start packet\n");
 	byte_fifo_write(p->tx_fifo, h->header);
 	byte_fifo_write(p->tx_fifo, h->subpacket_payload_max_size);
 	pt_ext_write_uint16_to_fifo(p, h->start_packet_payload_cs);
@@ -294,6 +294,7 @@ void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms)
 
 	if (p->pt_ext_tx.send_response)
 	{
+		pt_debug("Set response flag\n");
 		enum pt_errors r = 
 			pt_extended_send_response_packet(p);
 
@@ -501,7 +502,9 @@ pt_extended_receive_packets_payload_next_byte(
 		{
 			// TODO: Add error handling
 			// packet checksum error
-			pt_debug("E: payload checksum failed\n");
+			pt_debug("E: payload checksum failed: r=%i != c=%i\n",
+				 subpack_rx->subpacket_payload_cs, 
+				 subpacket_payload_cs);
 			return PT_ERROR_CHECKSUM_FAILED;
 		}
 	}
