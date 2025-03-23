@@ -114,7 +114,6 @@ void setUp(void)
 
 			.tx_fifo = ftx,
 			.rx_fifo = ftx,
-			//.rx_fifo = frx,
 
 			.tx_retries = 0,
 			.tx_rsp_timeout_ms = 10,
@@ -1563,7 +1562,83 @@ void test_pt_ext_tx_wait_after_nack_received(void)
 
 }
 
-// TODO
 // TEST mixed pico and ext packets
+void test_pt_pico_ext_mix(void)
+{
+	enum pt_errors r;
+	uint8_t data[pt->max_packet_payload_size * 4];
+	uint8_t pico_data[32];
+
+	// reset the pt_ext 
+	pt_extended_tx_full_packet_done_cleanup(pt);
+	pt_extended_rx_full_packet_done_cleanup(pt);
+
+	pt_extended_register_packet_received_callback(
+		pt, ext_full_packet_cb);
+
+	uint32_t tmp = callback_cnt;
+	pt_pico_register_rx_callback(pt, NULL, 
+				      pt_pico_packet_rx_complete);
+
+	r = pt_pico_send(pt, pico_data, sizeof(pico_data));
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	TEST_ASSERT_EQUAL_UINT32(tmp+1, callback_cnt);
+
+	// make ext start packet and send it
+	pt->pt_ext_tx.tx_state = PT_EXT_TX_STATE_SEND_START_PACKET;
+	pt->pt_ext_tx.data = data;
+	pt->pt_ext_tx.data_size = sizeof(data);
+
+	struct pt_extended_start_packet_header hs;
+
+	pt_extended_fill_start_packet_header(
+		pt, &hs, pt->max_packet_payload_size);
+
+	pt_extended_sent_start_packet(
+		pt, &hs, pt->max_packet_payload_size);
+
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+	// all bytes should be used by tx/rx (it is same fifo)
+	TEST_ASSERT_EQUAL_INT32(0, 
+				byte_fifo_get_fill_count(pt->tx_fifo));
+
+	// receiver should be in state waiting new packet
+	TEST_ASSERT_EQUAL_UINT8(PT_RX_WAITING_FIRST_BYTE,
+				pt->pt_receive_state);
+
+	
+	r = pt_pico_send(pt, pico_data, sizeof(pico_data));
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_UINT32(tmp+2, callback_cnt);
+
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	// generate payload packet with foo header crc
+	struct pt_extended_payload_packet_header hp;
+
+	pt_extended_fill_payload_packet_header(
+		pt, &hp, pt->max_packet_payload_size);
+
+	pt_extended_sent_payload_packet(
+		pt, &hp, pt->max_packet_payload_size);
+
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+	TEST_ASSERT_EQUAL_INT32(0, 
+				byte_fifo_get_fill_count(pt->tx_fifo));
+
+}
+
+// TODO
+// check the tx data already sent variable
+// clean tx timers when sending a ext message out
+// clean tx timers when new message received
+// TEST !all the timers!
+// TEST request_memory not enought memory
 // TEST if part of payload/header is missing (timeout)
 // TEST for a missing packet (seq number bigger than expected)
