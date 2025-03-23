@@ -17,7 +17,6 @@
 
 static void pt_receiver_check_header(struct pt *p, uint8_t header)
 {
-
 	uint8_t packet_type = (header >> PT_HEADER_TYPE_POS) & 0x3;
 	if (PT_HEADER_TYPE_PICO == packet_type)
 	{

@@ -53,6 +53,5 @@ void pt_pico_register_rx_callback(
 	struct pt *p,
 	void *high_layer_data, 
 	void (*high_layer_callback)(void *, uint8_t *, size_t));
-	
 
 #endif

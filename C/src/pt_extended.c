@@ -6,12 +6,10 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
-
 #include "pt.h"
-#include "pt_extended.h"
 #include "pt_internal.h"
+#include "pt_extended.h"
 
 #include "bsd_checksum.h"
 
@@ -126,7 +124,7 @@ pt_extended_sent_start_packet(
 	struct pt_extended_start_packet_header *h,
 	size_t start_packet_payload_size)
 {
-	printf("Sending start packet\n");
+	pt_debug("Sending start packet wp: %i\n", start_packet_payload_size);
 	byte_fifo_write(p->tx_fifo, h->header);
 	byte_fifo_write(p->tx_fifo, h->subpacket_payload_max_size);
 	pt_ext_write_uint16_to_fifo(p, h->start_packet_payload_cs);
@@ -156,6 +154,7 @@ STATIC enum pt_errors pt_extended_send_start_packet(struct pt *p)
 
 	if (byte_fifo_get_free_space(p->tx_fifo) < full_packet_size)
 	{
+		//pt_debug("*");
 		return PT_ERROR_BUSY;
 	}
 
@@ -233,12 +232,15 @@ pt_extended_send_next_payload_packet(struct pt *p)
 
 	if (byte_fifo_get_free_space(p->tx_fifo) < full_packet_size)
 	{
+		//pt_debug("*");
 		return PT_ERROR_BUSY;
 	}
 
 	struct pt_extended_payload_packet_header h;
 	pt_extended_fill_payload_packet_header(
 		p, &h, packet_payload_size);
+
+	pt_debug("Sending payload packet %i\n", h.packet_number);
 
 	pt_extended_sent_payload_packet(
 		p, &h, packet_payload_size);
@@ -268,6 +270,10 @@ STATIC enum pt_errors pt_extended_send_response_packet(struct pt *p)
 	h.header_bsd8_cs = bsd_checksum8_from(
 		h.header_bsd8_cs, 
 		(uint8_t *) &h.last_received_packet_number, 2);
+
+	pt_debug("Sending response packet %s -> %i \n", 
+		 (p->pt_ext_tx.response_flags ? "ACK" : "NACK"),
+		 h.last_received_packet_number);
 		
 	byte_fifo_write(p->tx_fifo, h.header_bsd8_cs);
 
@@ -284,6 +290,7 @@ void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms)
 	{
 		if (pd->time_passed_in_state_ms >= p->timeout_tx_ms)
 		{
+			pt_debug("waited for idle timeout!");
 			pd->tx_state = pd->tx_state_before_nack;
 		}
 		else
@@ -394,16 +401,19 @@ pt_extended_send(struct pt *p,
 		return PT_ERROR_ARGS;
 	}
 
-	p->pt_ext_tx.tx_state = PT_EXT_TX_STATE_SEND_START_PACKET;
+	pt_ext_move_tx_state(p, PT_EXT_TX_STATE_SEND_START_PACKET);
+
 	p->pt_ext_tx.data = data;
 	p->pt_ext_tx.data_size = data_size;	
 	p->pt_ext_tx.tx_done_callback = done_callback;
+	p->pt_ext_tx.data_already_sent = 0;
 
 	return PT_NO_ERROR;
 }
 
 STATIC void pt_extended_send_response(struct pt *p, bool ack)
 {
+	pt_debug("request sending response\n");
 	p->pt_ext_tx.response_packet_number =
 		p->pt_ext_rx.last_received_packet_number ;
 	p->pt_ext_tx.response_flags = ack;
@@ -457,6 +467,8 @@ pt_extended_receive_packets_payload_next_byte(
 			// packet received successfully
 			*packet_done = true;
 
+			pt_debug("subpacket recived\n");
+
 			subpack_rx->subpacket_rx_state = 
 				PT_EXT_RX_WAITING_PACKET_HEADER;
 
@@ -479,6 +491,7 @@ pt_extended_receive_packets_payload_next_byte(
 			if (pe_rx->full_payload_buffer_fill_index 
 			    >= pe_rx->full_payload_size)
 			{
+				pt_debug("full payload received\n");
 				// send back ack
 				// TODO: check the final crc before sending ack
 				pt_extended_send_response(p, 
@@ -724,7 +737,7 @@ pt_extended_rx_handle_nack(struct pt *p)
 		subpack_rx->payload_buffer[0] 
 		| subpack_rx->payload_buffer[1] << 8;
 
-	pt_debug("N: %i, %i\n", last_packet_number,
+	pt_debug("nack received: %i, %i\n", last_packet_number,
 		 pe_rx->last_received_packet_number);
 	if (last_packet_number > 
 	    pe_rx->last_received_packet_number)
@@ -828,6 +841,10 @@ enum pt_errors pt_extended_rx_header(struct pt *p, uint8_t header)
 	struct pt_extended_data_rx_subpacket *subpack_rx = 
 		&p->pt_ext_rx.subpacket_rx;
 
+	// every income packet resets the tx timer
+	struct pt_extended_data_tx *pd = &p->pt_ext_tx;
+	pd->time_passed_in_state_ms = 0;
+
 	pt_extended_receiver_prepare_for_new_subpacket(p);
 
 	subpack_rx->header = header;
@@ -865,7 +882,6 @@ enum pt_errors pt_extended_rx_header(struct pt *p, uint8_t header)
 
 	return PT_NO_ERROR;
 }
-
 
 void pt_extended_register_packet_received_callback(
 	struct pt *p, 
