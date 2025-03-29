@@ -359,10 +359,20 @@ void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms)
 					p,
 					PT_EXT_TX_STATE_WAIT_RSP);
 			}
+			pd->time_passed_in_state_ms = 0;
 		}
 		else
 		{
+			// TODO: Test this
+			if (pd->time_passed_in_state_ms > p->timeout_rsp_tx_ms)
+			{
+				pd->tx_done_callback(PT_EXT_TX_TIMEOUT);
 
+				// TODO: ? Add retries ?
+				pt_ext_move_tx_state(
+					p,
+					PT_EXT_TX_STATE_IDLE);
+			}
 		}
 	}
 
