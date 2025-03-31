@@ -6,6 +6,7 @@
 #include <time.h> 
 #include <stdarg.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include "utils.h"
 #include "socket_interface.h"
@@ -31,18 +32,18 @@ static void ext_full_packet_received_cb(uint8_t *data, size_t data_size)
 	printf("Client: Full packet received\n");
 }
 
-static int tx_packet_cnt = 0;
+//static int tx_packet_cnt = 0;
 void ext_tx_done_callback(enum pt_ext_tx_rsp_status s)
 {
 	if (PT_EXT_TX_DONE == s)
 	{
 		printf("Client: tx done!\n");
 
-		tx_packet_cnt += 1;
-		if (tx_packet_cnt <= 1)
-		{
-			send_new_packet = true;
-		}
+		//tx_packet_cnt += 1;
+		//if (tx_packet_cnt <= 1)
+		//{
+		//	send_new_packet = true;
+		//}
 	}
 	else
 	{
@@ -184,7 +185,12 @@ int main(int argc, char **argv)
 		};
 
 		struct pt *pt = pt_init(&s);
-		
+		if (NULL == pt)
+		{
+                        printf("Can't initialize packet transfer layer\n");
+                        break;
+		}
+
 		pt_extended_register_packet_received_callback(
 			pt, ext_full_packet_received_cb);
 

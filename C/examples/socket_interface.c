@@ -281,6 +281,10 @@ struct connection *client_connect_to_server(size_t fifo_buff_size,
 
 	tmp->rxf = byte_fifo_init(&rxfs);
 
+	if ((NULL == tmp->rxf) || (NULL == tmp->txf))
+	{
+		return NULL;
+	}
 
         return tmp;
 }
