@@ -28,9 +28,11 @@ int32_t receive_data(struct connection *c)
 
 	uint8_t data_buff[fs];
 
-        int n = recvfrom(c->connfd, data_buff, fs, 0,
-			 //0, (struct sockaddr *) &cliaddr, &clilen);
-			 (struct sockaddr *) & c->addr, &c->sock_len); 
+	int n = recv(c->connfd, data_buff, fs, 0);
+
+        //int n = recvfrom(c->connfd, data_buff, fs, 0,
+	//		 //0, (struct sockaddr *) &cliaddr, &clilen);
+	//		 (struct sockaddr *) & c->addr, &c->sock_len); 
 
 	if ( n > 0)
 	{
@@ -104,8 +106,10 @@ int32_t send_data(struct connection *c)
 		data_buff[i] = byte_fifo_read(c->txf);
 	}
 
-        uint32_t n = sendto(c->connfd, data_buff, fs, 0, 
-			    (struct sockaddr *) &c->addr, c->sock_len); 
+        //uint32_t n = sendto(c->connfd, data_buff, fs, 0, 
+	//		    (struct sockaddr *) &c->addr, c->sock_len); 
+
+	uint32_t n = send(c->connfd, data_buff, fs, 0);
 
         //if (n != fs)
         //{
@@ -312,98 +316,39 @@ struct connection *client_connect_to_server(size_t fifo_buff_size,
         return tmp;
 }
 
-
-// This code works on linux ok but when run on mac the socket
-// disconnects after sending data. Is handling sockets on mac
-// different than of linux? what do I need to do to get this working
-// on mac. So the connection stays open?
+// This code returns Send incomplete or failed: -1 of 4 bytes sent. Error: Invalid argument when used on macos. Do you know why?
 //
-//# Socket Compatibility Issue between Linux and macOS
+//The error message "Invalid argument" when using `sendto()` on macOS is likely occurring because you're using the wrong function for TCP sockets in `send_data()`.
 //
-//The difference in behavior you're experiencing between Linux and macOS is likely related to a few socket programming differences between these platforms and how timeout handling works.
+//The issue is:
 //
-//## Key Issues with Your Code for macOS
-//
-//1. **Socket Options and Timeouts**:
-//   - macOS (BSD-derived) socket implementation can be more strict about timeouts and connection handling
-//   - Your short 1ms timeout may be causing issues on macOS
-//
-//2. **Error Handling**:
-//   - In `receive_data()`, you're checking for Linux-specific error codes but not handling macOS errors properly
-//   - Not checking return values of all socket operations
-//
-//3. **Connection State**:
-//   - Not properly detecting socket state/disconnections on macOS
-//
-//## Recommended Fixes
-//
-//1. **Increase Timeout Value**:
+//1. You're creating a TCP socket with `SOCK_STREAM` in both the server and client code:
 //   ```c
-//   timeout.tv_sec = 0;
-//   timeout.tv_usec = 10000; // Use 10ms instead of 1ms
+//   tmp->listenfd = socket(AF_INET, SOCK_STREAM, 0);  // Server
+//   tmp->connfd = socket(AF_INET, SOCK_STREAM, 0);    // Client
 //   ```
 //
-//2. **Improve Error Handling in `receive_data()`**:
-//   ```c
-//   else
-//   {
-//       if (EAGAIN == errno || EWOULDBLOCK == errno || EINTR == errno)
-//       {
-//           // no data on the socket, just skip
-//           n = 0;
-//       }
-//       else
-//       {
-//           printf("Socket error: %d - %s\n", errno, strerror(errno));
-//           return -1;  // Signal connection issue
-//       }
-//   }
-//   ```
+//2. But then you're using `sendto()` in your `send_data()` function, which is designed for connectionless sockets (like UDP/SOCK_DGRAM).
 //
-//3. **Add Error Handling in `send_data()`**:
-//   ```c
-//   if (n != fs)
-//   {
-//       printf("Send incomplete or failed: %d of %d bytes sent. Error: %s\n", 
-//              n, fs, strerror(errno));
-//       if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-//           return -1;  // Signal connection issue
-//       }
-//       return n; 
-//   }
-//   ```
+//3. For TCP/SOCK_STREAM sockets, you should use `send()` instead of `sendto()` since the connection is already established and the destination address is already known.
 //
-//4. **Set Keep-Alive Option**:
-//   Add this to your connection initialization functions:
-//   ```c
-//   int keepalive = 1;
-//   if (setsockopt(tmp->connfd, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive)) < 0) {
-//       printf("setsockopt keepalive failed\n");
-//   }
-//   ```
+//To fix the issue, replace:
 //
-//5. **Set TCP_NODELAY (Optional)**:
-//   This can improve performance for small packets:
-//   ```c
-//   int flag = 1;
-//   if (setsockopt(tmp->connfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int)) < 0) {
-//       printf("setsockopt TCP_NODELAY failed\n");
-//   }
-//   ```
+//```c
+//uint32_t n = sendto(c->connfd, data_buff, fs, 0, 
+//                    (struct sockaddr *) &c->addr, c->sock_len);
+//```
 //
-//6. **Make Non-Blocking Sockets (Alternative Approach)**:
-//   Instead of timeouts, you might want to use non-blocking sockets:
-//   ```c
-//   // In your initialization code
-//   fcntl(tmp->connfd, F_SETFL, O_NONBLOCK);
-//   ```
+//With:
 //
-//## Why This Happens
+//```c
+//uint32_t n = send(c->connfd, data_buff, fs, 0);
+//```
 //
-//macOS's networking stack is derived from BSD, which can have different behaviors than Linux:
+//The same applies to your `receive_data()` function - you should use `recv()` instead of `recvfrom()` for TCP connections:
 //
-//1. It may be more sensitive to timeout values and consider connections dropped more easily
-//2. Error handling and socket states may differ slightly
-//3. Default socket buffer sizes and behavior may be different
+//```c
+//int n = recv(c->connfd, data_buff, fs, 0);
+//```
 //
-//By implementing the changes above, especially increasing the timeout value and improving error handling, your code should work more consistently across both platforms.
+//Using `sendto()`/`recvfrom()` with a connection-oriented socket and providing address information that doesn't match the connected peer can result in "Invalid argument" errors specifically on macOS (other systems might behave differently).
