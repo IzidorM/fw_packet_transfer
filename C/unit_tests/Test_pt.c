@@ -769,6 +769,127 @@ void test_pt_ext_send_packet_less_than_full_size(void)
 	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_DONE, last_tx_done_status);
 }
 
+void test_pt_ext_send_packet_less_than_full_size_with_header(void)
+{
+	disable_output = false;
+
+	enum pt_errors r;
+	uint8_t header[4] = {4,3,2,1};
+	uint8_t data[pt->max_packet_payload_size/2];
+
+	pt_extended_tx_full_packet_done_cleanup(pt);
+	pt_extended_rx_full_packet_done_cleanup(pt);
+
+	pt_extended_register_packet_received_callback(
+		pt, ext_full_packet_cb);
+
+	// send data packet
+	r = pt_extended_send_data_with_header(pt,
+					 header,
+					 sizeof(header),
+					 data, 
+					 sizeof(data),
+					 tp_ext_tx_done_callback_test);
+
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);	
+
+	// run send statemachine to send the packet
+	pt_extended_tx_run(pt, 1);
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_WAIT_RSP,
+				pt->pt_ext_tx.tx_state);
+	TEST_ASSERT_EQUAL_INT32(0, ext_full_packet_cb_cnt);
+
+	// run receive to receive above data package
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	// after successfully receiving the packet, 
+	// the ack should be sent back. So check if the tx statemachine
+	// is set to send the response
+	TEST_ASSERT_TRUE(pt->pt_ext_tx.send_response);
+
+	// after receiving the packet, the callback should be called
+	TEST_ASSERT_EQUAL_INT32(1, ext_full_packet_cb_cnt);
+	TEST_ASSERT_EQUAL_INT32(sizeof(data) + sizeof(header), 
+				ext_full_payload_data_size);
+
+	TEST_ASSERT_EQUAL_MEMORY(header, 
+				 ext_full_payload_data,
+				 sizeof(header));
+	
+	TEST_ASSERT_EQUAL_MEMORY(data, 
+				 ext_full_payload_data + sizeof(header),
+				 sizeof(data));
+
+	// run the tx statemachine to send the ack
+	pt_extended_tx_run(pt, 1);
+
+	// receive ack and check if the tx is unblocked
+	uint32_t old_tmp = tp_ext_tx_done_callback_test_call_cnt;
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+	// fifo should be empty
+	TEST_ASSERT_EQUAL_INT32(0, byte_fifo_get_fill_count(pt->tx_fifo));
+	// tx statemachine should be idle
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_IDLE,
+				pt->pt_ext_tx.tx_state);
+
+	// pt_extended_send done callback should be called
+	TEST_ASSERT_EQUAL_UINT32(old_tmp + 1, 
+				tp_ext_tx_done_callback_test_call_cnt);
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_DONE, last_tx_done_status);
+
+
+	// lets try to send another packet
+	pt_debug("test: sending second packet\n");
+	// change payload data
+	for (uint32_t i = 0; i < sizeof(data); i++) 
+	{
+		data[i] = i & 0xff;
+	}
+
+	r = pt_extended_send(pt,
+			     data, 
+			     sizeof(data),
+			     tp_ext_tx_done_callback_test);
+
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);	
+
+	// send packet
+	pt_extended_tx_run(pt, 1);
+
+	// receive packet
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	TEST_ASSERT_EQUAL_INT32(2, ext_full_packet_cb_cnt);
+	TEST_ASSERT_EQUAL_INT32(sizeof(data), ext_full_payload_data_size);
+	TEST_ASSERT_EQUAL_MEMORY(data, ext_full_payload_data, sizeof(data));
+
+	// send back ack
+	pt_extended_tx_run(pt, 1);
+
+	// receive ack
+	old_tmp = tp_ext_tx_done_callback_test_call_cnt;
+	r = pt_receiver_run(pt, 1);
+
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	// fifo should be empty
+	TEST_ASSERT_EQUAL_INT32(0, byte_fifo_get_fill_count(pt->tx_fifo));
+
+	// tx statemachine should be idle
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_IDLE,
+				pt->pt_ext_tx.tx_state);
+
+	// pt_extended_send done callback should be called
+	TEST_ASSERT_EQUAL_UINT32(old_tmp + 1, 
+				tp_ext_tx_done_callback_test_call_cnt);
+
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_DONE, last_tx_done_status);
+}
+
+
 
 void test_pt_ext_send_packet_bigger_than_only_start_packet(void)
 {
@@ -808,6 +929,128 @@ void test_pt_ext_send_packet_bigger_than_only_start_packet(void)
 	TEST_ASSERT_EQUAL_INT32(1, ext_full_packet_cb_cnt);
 	TEST_ASSERT_EQUAL_INT32(sizeof(data), ext_full_payload_data_size);
 	TEST_ASSERT_EQUAL_MEMORY(data, ext_full_payload_data, sizeof(data));
+
+	// run the tx statemachine to send the ack
+	pt_extended_tx_run(pt, 1);
+
+	// receive ack and check if the tx is unblocked
+	uint32_t old_tmp = tp_ext_tx_done_callback_test_call_cnt;
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+	// fifo should be empty
+	TEST_ASSERT_EQUAL_INT32(0, byte_fifo_get_fill_count(pt->tx_fifo));
+	// tx statemachine should be idle
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_IDLE,
+				pt->pt_ext_tx.tx_state);
+
+	// pt_extended_send done callback should be called
+	TEST_ASSERT_EQUAL_UINT32(old_tmp + 1, 
+				tp_ext_tx_done_callback_test_call_cnt);
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_DONE, last_tx_done_status);
+
+
+	// lets try to send another packet
+	pt_debug("test: sending second packet\n");
+	// change payload data
+	for (uint32_t i = 0; i < sizeof(data); i++) 
+	{
+		data[i] = i & 0xff;
+	}
+
+	r = pt_extended_send(pt,
+			     data, 
+			     sizeof(data),
+			     tp_ext_tx_done_callback_test);
+
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);	
+
+	// send packet
+	pt_extended_tx_run(pt, 1);
+
+	// receive packet
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	TEST_ASSERT_EQUAL_INT32(2, ext_full_packet_cb_cnt);
+	TEST_ASSERT_EQUAL_INT32(sizeof(data), ext_full_payload_data_size);
+	TEST_ASSERT_EQUAL_MEMORY(data, ext_full_payload_data, sizeof(data));
+
+	// send back ack
+	pt_extended_tx_run(pt, 1);
+
+	// receive ack
+	old_tmp = tp_ext_tx_done_callback_test_call_cnt;
+	r = pt_receiver_run(pt, 1);
+
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	// fifo should be empty
+	TEST_ASSERT_EQUAL_INT32(0, byte_fifo_get_fill_count(pt->tx_fifo));
+
+	// tx statemachine should be idle
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_IDLE,
+				pt->pt_ext_tx.tx_state);
+
+	// pt_extended_send done callback should be called
+	TEST_ASSERT_EQUAL_UINT32(old_tmp + 1, 
+				tp_ext_tx_done_callback_test_call_cnt);
+
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_DONE, last_tx_done_status);
+}
+
+void test_pt_ext_send_packet_with_predata(void)
+{
+	enum pt_errors r;
+	uint8_t header[3] = {1,2,3};
+	uint8_t data[pt->max_packet_payload_size * 2];
+
+	pt_extended_tx_full_packet_done_cleanup(pt);
+	pt_extended_rx_full_packet_done_cleanup(pt);
+
+	pt_extended_register_packet_received_callback(
+		pt, ext_full_packet_cb);
+
+	// send data packet
+	r = pt_extended_send_data_with_header(pt,
+					      header,
+					      sizeof(header),
+					      data, 
+					      sizeof(data),
+					      tp_ext_tx_done_callback_test);
+
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);	
+
+	// run send statemachine to send the packet
+	pt_extended_tx_run(pt, 1);
+	pt_extended_tx_run(pt, 1);
+	TEST_ASSERT_EQUAL_UINT8(PT_EXT_TX_STATE_WAIT_RSP,
+				pt->pt_ext_tx.tx_state);
+	TEST_ASSERT_EQUAL_INT32(0, ext_full_packet_cb_cnt);
+
+	// run receive to receive above data package
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	r = pt_receiver_run(pt, 1);
+	TEST_ASSERT_EQUAL_INT32(PT_NO_ERROR, r);
+
+	// after successfully receiving the packet, 
+	// the ack should be sent back. So check if the tx statemachine
+	// is set to send the response
+	TEST_ASSERT_TRUE(pt->pt_ext_tx.send_response);
+
+	// after receiving the packet, the callback should be called
+	TEST_ASSERT_EQUAL_INT32(1, ext_full_packet_cb_cnt);
+	TEST_ASSERT_EQUAL_INT32(sizeof(data) + sizeof(header), 
+				ext_full_payload_data_size);
+
+	TEST_ASSERT_EQUAL_MEMORY(header, 
+				 ext_full_payload_data,
+				 sizeof(header));
+
+	TEST_ASSERT_EQUAL_MEMORY(data, 
+				 ext_full_payload_data + sizeof(header),
+				 sizeof(data));
 
 	// run the tx statemachine to send the ack
 	pt_extended_tx_run(pt, 1);
@@ -1076,7 +1319,7 @@ void test_pt_ext_rx_nack_when_tx_idle(void)
 
 void test_pt_ext_nack_start_packet(void)
 {
-	disable_output = false;
+	//disable_output = false;
 	enum pt_errors r;
 	uint8_t data[pt->max_packet_payload_size * 2];
 

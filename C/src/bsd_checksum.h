@@ -9,6 +9,9 @@
 
 uint8_t bsd_checksum8(uint8_t *data, size_t data_size);
 uint16_t bsd_checksum16(uint8_t *data, size_t data_size);
-uint8_t bsd_checksum8_from(uint8_t start_checksum, uint8_t *data, size_t data_size);
+uint8_t bsd_checksum8_from(uint8_t start_checksum, 
+			   uint8_t *data, size_t data_size);
+uint16_t bsd_checksum16_from(uint16_t start_checksum, 
+			     uint8_t *data, size_t data_size);
 
 #endif

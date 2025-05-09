@@ -16,6 +16,14 @@ pt_extended_send(struct pt *p,
 		 size_t data_size,
 		 void (*done_callback)(enum pt_ext_tx_rsp_status));
 
+enum pt_errors 
+pt_extended_send_data_with_header(struct pt *p, 
+				  uint8_t *header,
+				  size_t h_size,
+				  uint8_t *data, 
+				  size_t data_size,
+				  void (*done_callback)(enum pt_ext_tx_rsp_status));
+
 void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms);
 
 void pt_extended_register_packet_received_callback(

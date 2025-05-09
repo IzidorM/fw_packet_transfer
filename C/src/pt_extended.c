@@ -48,7 +48,9 @@ STATIC uint16_t pt_ext_read_uint16_from_buff(uint8_t *buff)
 
 STATIC size_t pt_ext_get_packet_payload_size(struct pt *p)
 {
-	size_t data_left_to_send = p->pt_ext_tx.data_size 
+	size_t all_data_size = (p->pt_ext_tx.data_size 
+				+ p->pt_ext_tx.pdata_size);
+	size_t data_left_to_send = all_data_size
 		- p->pt_ext_tx.data_already_sent;
 
 	if (data_left_to_send > p->max_packet_payload_size)
@@ -101,18 +103,30 @@ pt_extended_fill_start_packet_header(
 		&h->subpacket_payload_max_size, 1);
 
 	h->start_packet_payload_cs = bsd_checksum16(
-		p->pt_ext_tx.data, start_packet_payload_size);
+		p->pt_ext_tx.pre_data, p->pt_ext_tx.pdata_size);
+
+	h->start_packet_payload_cs = bsd_checksum16_from(
+		h->start_packet_payload_cs,
+		p->pt_ext_tx.data, 
+		(start_packet_payload_size - p->pt_ext_tx.pdata_size));
 	h->header_bsd8_cs = bsd_checksum8_from(
 		h->header_bsd8_cs, 
 		(uint8_t *) &h->start_packet_payload_cs, 2);
 
-	h->full_payload_size = (uint32_t) p->pt_ext_tx.data_size;
+	h->full_payload_size = (uint32_t) (p->pt_ext_tx.data_size
+					   + p->pt_ext_tx.pdata_size);
 	h->header_bsd8_cs = bsd_checksum8_from(
 		h->header_bsd8_cs, 
 		(uint8_t *) &h->full_payload_size, 4);
 
-	h->full_payload_cs = bsd_checksum16(p->pt_ext_tx.data, 
-					   p->pt_ext_tx.data_size);
+
+	h->full_payload_cs = bsd_checksum16(
+		p->pt_ext_tx.pre_data, p->pt_ext_tx.pdata_size);
+
+	h->full_payload_cs = bsd_checksum16_from((uint16_t) h->full_payload_cs,
+						 p->pt_ext_tx.data, 
+						 p->pt_ext_tx.data_size);
+
 	h->header_bsd8_cs = bsd_checksum8_from(
 		h->header_bsd8_cs, 
 		(uint8_t *) &h->full_payload_cs, 4);
@@ -132,7 +146,14 @@ pt_extended_sent_start_packet(
 	pt_ext_write_uint32_to_fifo(p, h->full_payload_cs);
 	byte_fifo_write(p->tx_fifo, h->header_bsd8_cs);
 
-	for (uint32_t i = 0; start_packet_payload_size > i; i++)
+	for (uint32_t i = 0; p->pt_ext_tx.pdata_size > i; i++)
+	{
+		byte_fifo_write(p->tx_fifo, p->pt_ext_tx.pre_data[i]);
+	}
+
+	size_t ps = start_packet_payload_size 
+		- p->pt_ext_tx.pdata_size;
+	for (uint32_t i = 0; ps > i; i++)
 	{
 		byte_fifo_write(p->tx_fifo, p->pt_ext_tx.data[i]);
 	}
@@ -181,7 +202,8 @@ pt_extended_fill_payload_packet_header(
 	h->packet_number = (uint16_t) (p->pt_ext_tx.data_already_sent
 				       / p->max_packet_payload_size);
 	h->payload_cs = bsd_checksum16(
-		p->pt_ext_tx.data + p->pt_ext_tx.data_already_sent,
+		p->pt_ext_tx.data 
+		+ (p->pt_ext_tx.data_already_sent - p->pt_ext_tx.pdata_size),
 		packet_payload_size);
 	h->header_bsd8_cs = 0;
 
@@ -208,7 +230,9 @@ pt_extended_sent_payload_packet(
 
 	for (uint32_t i = 0; packet_payload_size > i; i++)
 	{
-		size_t index = p->pt_ext_tx.data_already_sent + i;
+		
+		size_t index = (p->pt_ext_tx.data_already_sent 
+				- p->pt_ext_tx.pdata_size) + i;
 		byte_fifo_write(p->tx_fifo, 
 			p->pt_ext_tx.data[index]);
 	}
@@ -328,7 +352,8 @@ void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms)
 			enum pt_ext_tx_state next_state = 
 				PT_EXT_TX_STATE_SEND_PAYLOAD_PACKET;
 
-			if (pd->data_already_sent == pd->data_size)
+			size_t fs = pd->data_size + pd->pdata_size;
+			if (pd->data_already_sent == fs)
 			{
 				next_state = PT_EXT_TX_STATE_WAIT_RSP;
 			}
@@ -353,7 +378,8 @@ void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms)
 
 		if (PT_NO_ERROR == r)
 		{
-			if (pd->data_already_sent == pd->data_size)
+			size_t fs = pd->data_size + pd->pdata_size;
+			if (pd->data_already_sent == fs)
 			{
 				pt_ext_move_tx_state(
 					p,
@@ -395,7 +421,9 @@ void pt_extended_tx_run(struct pt *p, uint32_t time_from_last_call_ms)
 
 // NOTE: caller must hold data valid until the callback is called
 enum pt_errors 
-pt_extended_send(struct pt *p, 
+pt_extended_send_data_with_header(struct pt *p, 
+		 uint8_t *header,
+		 size_t h_size,
 		 uint8_t *data, 
 		 size_t data_size,
 		 void (*done_callback)(enum pt_ext_tx_rsp_status))
@@ -413,12 +441,28 @@ pt_extended_send(struct pt *p,
 
 	pt_ext_move_tx_state(p, PT_EXT_TX_STATE_SEND_START_PACKET);
 
+	p->pt_ext_tx.pre_data = header;
+	p->pt_ext_tx.pdata_size = h_size;
+
 	p->pt_ext_tx.data = data;
 	p->pt_ext_tx.data_size = data_size;	
 	p->pt_ext_tx.tx_done_callback = done_callback;
 	p->pt_ext_tx.data_already_sent = 0;
 
 	return PT_NO_ERROR;
+}
+
+// NOTE: caller must hold data valid until the callback is called
+enum pt_errors 
+pt_extended_send(struct pt *p, 
+		 uint8_t *data, 
+		 size_t data_size,
+		 void (*done_callback)(enum pt_ext_tx_rsp_status))
+{
+	return pt_extended_send_data_with_header(p, NULL, 0,
+						 data, 
+						 data_size,
+						 done_callback);
 }
 
 STATIC void pt_extended_send_response(struct pt *p, bool ack)
@@ -743,13 +787,13 @@ pt_extended_rx_handle_nack(struct pt *p)
 	struct pt_extended_data_rx_subpacket *subpack_rx = 
 		&p->pt_ext_rx.subpacket_rx;
 	
-	uint16_t last_packet_number = 
+	uint16_t packet_number_in_nack = 
 		subpack_rx->payload_buffer[0] 
 		| subpack_rx->payload_buffer[1] << 8;
 
-	pt_debug("nack received: %i, %i\n", last_packet_number,
+	pt_debug("nack received: %i, %i\n", packet_number_in_nack,
 		 pe_rx->last_received_packet_number);
-	if (last_packet_number > 
+	if (packet_number_in_nack > 
 	    pe_rx->last_received_packet_number)
 	{
 		pt_debug("E: Foo nack packet due packet number to big\n");
@@ -759,10 +803,11 @@ pt_extended_rx_handle_nack(struct pt *p)
 	}
 
 	// correct the tx to go back to last valid data
-	p->pt_ext_tx.data_already_sent = last_packet_number
+	p->pt_ext_tx.data_already_sent = packet_number_in_nack
 		* p->max_packet_payload_size;
 
-	if (last_packet_number)
+	// TODO: Is this ok. Can we nack start?
+	if (packet_number_in_nack)
 	{
 		p->pt_ext_tx.tx_state_before_nack = 
 			p->pt_ext_tx.tx_state;

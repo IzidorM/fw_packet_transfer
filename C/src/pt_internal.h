@@ -98,6 +98,9 @@ struct pt_extended_data_tx {
 	enum pt_ext_tx_state tx_state;
 	enum pt_ext_tx_state tx_state_before_nack;
 
+	uint8_t *pre_data;
+	size_t pdata_size;
+
 	uint8_t *data;
 	size_t data_size;
 	size_t data_already_sent;
