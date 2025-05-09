@@ -1,0 +1,3 @@
+[submodule "C/external/fw_byte_fifo"]
+	path = C/external/fw_byte_fifo
+	url = git@github.com:IzidorM/fw_byte_fifo.git

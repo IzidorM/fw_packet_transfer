@@ -41,18 +41,19 @@ The rest of the bits are specific to the packet type
 
 **** extended
 
-| fild name | bits  | description             |
-|-----------+-------+-------------------------|
-| msg type  | 5,4,3 | 0: start                |
-|           |       | 1: payload              |
-|           |       | 2: last                 |
-|           |       | 3: response             |
-|-----------+-------+-------------------------|
-| flags     | 2,1,0 | If message is response: |
-|           |       | 0: ack                  |
-|           |       | 1: nack                 |
-|           |       | 2-7: reserved           |
-|-----------+-------+-------------------------|
+| fild name | bits    | description        |
+|-----------+---------+--------------------|
+| msg type  | 5,4     | 0: not_defined     |
+|           |         | 1: start           |
+|           |         | 2: payload         |
+|           |         | 3: response        |
+|-----------+---------+--------------------|
+| reserved  | 4,3,2,1 | for future use     |
+|-----------+---------+--------------------|
+| ack flag  | 0       | if msg is response |
+|           |         | 0:nack, 1: ack     |
+|-----------+---------+--------------------|
+
 
 *** pico payload
 
@@ -63,8 +64,27 @@ there is 1 byte of checksum. The checksum is bsd 1byte checksum.
 
 *** extended payload
 
-TODO:....
+Payload is broken in multiple subpackets. First the subpacket start is
+send. The start packet already contains up to subpacket payload max
+size bytes form the full payload. If the full packet payload is bigger
+than subpacket max payload, then the rest of the full payload is
+sent in payload packets.
 
+**** start message header
+[ common header (1byte), 
+  subpacket payload max size (1byte),
+  start_packet_payload_cs (2 bytes, little endian),
+  full payload size (4 bytes, little endian),
+  full payload cs (4 bytes, little endian),
+  header cs (1 byte),
+]
+
+**** payload message header
+[ common header (1byte), 
+  packet number (2bytes, little endian),
+  payload cs (2bytes, little endian),
+  header cs (1 byte),
+]
 
 *** pico transfer protocol
 
@@ -72,8 +92,57 @@ Pico transfers are stateless, so sender sends the pico packet and
 forgets about it. There is no feedback from the receiver if the packet
 was received.
 
-
 *** extended transfer protocol
+
+**** normal transfer
+
+To accomplish the transfer of the full packet payload, first the start
+packet is sent. The start packet has first subpacket_payload_max_size
+number of full payload bytes (or less if the full payload is less than
+that). If the full payload is bigger than this, the rest is send in
+the payload packets. Payload size in payload packets is always
+subpacket_payload_max_size, except for the last packet. The speed of
+sending the packets out is defined by lower network layer. When all
+the packets are received by the reciever, the receiver sends back an
+response packet with ack flag set if the payload is ok and nack flag
+set otherwise.
+
+**** packet lost/corrupted case
+
+If there is an error detected by the receiver, the receiver will send
+back the response packet with nack flag set and the last successfull
+received packet number. The sender should stop sending out packets,
+wait for more than the rx connection idle time to pass and then start
+sending out from the last successfully received packet number.
+
+***** special case 1: start packet corrupted or missing
+
+If the start packet is damaged (foo crc) or was lost, so payload
+packet is received with no start packet before, the receiver will
+replay with the response packet with nack flag and the packet number
+0. When the sender receives this response, it should stop transmitting
+for more than rx connection idle time.
+
+***** special case 2: start packet contains whole payload and was lost
+
+If start packet is the only packet so the sender expects a nack/ack
+after the start packet and start packet was lost, it needs to resend
+the start packet after the tx timeout.
+
+***** special case 3: nack/ack packet was lost
+
+If sender doesnt receive ack/nack packet after all the payload packets were sent,
+it needs to send the last payload packet again after the tx timeout
+
+***** special case 4: last packet lost or last few packets lost
+
+If the receiver stops receiving packets for connection idle time after
+the reception of start packet and before the last payload packet is
+received, it will send out the response packet with nack a nd last
+successfully received block number. In this cast sender doesnt need to
+wait for the idle time and should restart sending payload packets from
+the packet number received in ack/nack packet...
+
 
 
 
